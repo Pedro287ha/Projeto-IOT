@@ -1,6 +1,8 @@
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import smtplib, ssl
+
 
 ### DEFINICAO DE CONSTANTES DE LOGIN
 ###-----------------------------------------------------------------------------------####
@@ -9,23 +11,23 @@ EMAIL_LOGIN_CHAMADOS = ""
 SENHA_LOGIN_CHAMADOS = ""
 #TIPO_DE_LOGIN = 2
 
-## LOGIN EMAIL PARA ENVIO DE NOTIFICACOES
-EMAIL = ""
-SENHA_EMAIL = ""
-PORTA_SMTP = 0
+
+###------------------###
+#   CONFIGURACAO DE CREDENCIAIS 
+
+EMAIL_REMETENTE = ""
+SENHA_EMAIL_REMETENTE = ""
+EMAIL_DESTINATARIO = ""
+###------------------###
 
 
-###-----------------------------------------------------------------------------------####
+###------------------###
+#  CONFIGURACOES DO SERVIDOR SMTP
+PORTA = 587  #STARTTLS outlook # 
+SERVIDOR_SMTP = "smtp-mail.outlook.com"
 
+###------------------###
 
-####---------#### DEFINICOES DE DATAS
-DATA_ATUAL = datetime.now()
-ANO_ATUAL = DATA_ATUAL.year
-DIA_ATUAL = DATA_ATUAL.day
-MES_ATUAL = DATA_ATUAL.month
-
-QUANTIDADE_DIAS_CHECAR = 7
-####---------####
 
 ## Definindo User-agent para evitar block do CLoudFlare
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36'}
@@ -54,43 +56,71 @@ def gerar_api_token(email,senha) -> dict:
     return dados_dict 
 
 
-
-## Apenas chamados do modulo
-def get_chamados_abertos(api_token,tipo_token) -> dict:
+def receber_chamados(api_token,tipo_token) -> list:
     
-    ## Validando chamandos de 1 semana(7 dias)
-    data_inicial = f"{ANO_ATUAL}/{MES_ATUAL}/{DIA_ATUAL - QUANTIDADE_DIAS_CHECAR}"
-    data_final = f"{ANO_ATUAL}/{MES_ATUAL}/{DIA_ATUAL}"
-    url = f"https://liveops-api-americas.seidor.com/area/45/dashboard?StartDate={data_inicial}&EndDate={data_final}"
+    lista_chamados = []
+    url_api_auth = "https://liveops-api-americas.seidor.com/v2/orbit/ticket/listwithcount"
     
-
-    ## ADICIONANDO PARAMENTRO TOKEN GERADO DO USUARIO NO HEADER
+    # Alterando Headers da requisicao para enviar request
     HEADERS["Authorization"] = f"{tipo_token} {api_token}"
-
-    dados_request = requests.get(url,headers=HEADERS, allow_redirects=True)
-
-
-
-    dados_em_json = json.loads(dados_request.text)
-    chamados = dict(dados_em_json)
+    HEADERS['Content-Type'] = "application/json"
     
-    total_atentimentos = chamados['Total']
-    # Juntando 2 listas em um dicionario
-    tipo_atendimento_e_quantidade = dict(zip(chamados['Labels'], chamados['Quantities']))
+    # Json de requisicao usando ID 116 de funcionario
+    data = '''{"TicketExternalIds":null,"InternalTicketNumber":null,"CustomerIds":null,"BusinessIds":null,"ProjectId":null,"AreaId":null,"ProjectTypeIds":null,"TechnicalResourceGroupFilter":[116],"TicketsOpenedByGroupFilter":null,"FilterTicketStatus":null,"MyTicket":false,"FilterDateType":null,"StartDate":null,"EndDate":null,"Term":null,"TicketFilterTermTypes":null,"CustomerUserId":null,"IsOrderByPriority":false,"SquadIds":null,"SquadId":null,"ProjectTypeCodes":null,"ProjectIdsFilter":null,"TicketStatusIdList":null,"DataAnalise":null,"Culture":"br","IsDateTypeAdditionalField":null,"Pager":{"PageSize":100,"PageNumber":1,"SortByField":"updateDate","SortDirection":"desc"}}'''
 
-
-    #Adicionando numero total de chamados ao dicionario
-    tipo_atendimento_e_quantidade['Total'] = total_atentimentos
+    dados_request = requests.post(url_api_auth,headers=HEADERS, allow_redirects=True,data=data)
     
-    return tipo_atendimento_e_quantidade
+    # Transformando JSON recebido em um dict 
+    dados_dict = dict(json.loads(dados_request.text))
+    
+    # Apenas filtrando por status especificos
+    status_importantes = ["Encaminhado para atendente", "Em atendimento"]
+    
+    
+    for ticket in dados_dict["TicketGrid"]:
+        status_ticket = ticket["TicketStatusName"]
+        
+        if status_ticket in status_importantes:
+            # Formatando data para poder gerar datetime type
+            data_ticket_formatada = ticket["UpdateDate"].split("T")[0]
+            
+            # gerando um datatype datetime para comparacao de datas
+            data_ticket = datetime.strptime(data_ticket_formatada,"%Y-%m-%d")
+
+            # Quantidade de dias desde da ultima atualizacao do chamado
+            total_dias_entre_datas = int((datetime.now() - data_ticket).days) # Transformando datetime em int
+
+            # Chamado esta sem movimento a mais de 3 dias ?
+            if total_dias_entre_datas >= 3:
 
 
+                lista_chamados.append({
+                    "id" : ticket["TicketId"],
+                    "Mensagem" : f'ATENCAO o chamado de ID "{ticket["TicketId"]}" esta a {total_dias_entre_datas} dias sem ATUALIZACAO Link: https://liveops-americas.seidor.com/#/ticket/{ticket["TicketId"]} Email: {ticket["TicketAssigneeName"]}',
+                })
+    return lista_chamados
+
+def enviar_email(email_remetente,senha,email_destinatario,mensagem):
+
+    # modelo pradrao da documentacao do SMTPlib
+
+    mensagem =  f'Subject: CHAMADO ABERTO\n\n{mensagem}\n'
+
+    context = ssl.create_default_context() # criando um handshake com o servidor 
+    with smtplib.SMTP(SERVIDOR_SMTP, PORTA) as server:
+        server.starttls(context=context)
+        server.login(email_remetente, senha)
+        server.sendmail(email_remetente, email_destinatario, mensagem)
 
 def main() -> None:
     token = gerar_api_token(EMAIL_LOGIN_CHAMADOS,SENHA_LOGIN_CHAMADOS)
-    chamados = get_chamados_abertos(token['access_token'],token['token_type'])
+    #chamados = get_chamados_abertos(token['access_token'],token['token_type'])
 
-    print(chamados)
+    # Receber todos os chamados abertos e fazer verificacao 
+    chamados = receber_chamados(token['access_token'],token['token_type'])
+    print(len(chamados), chamados)
+    for chamado in chamados:
+        enviar_email(EMAIL_REMETENTE,SENHA_EMAIL_REMETENTE, EMAIL_DESTINATARIO, chamado["Mensagem"].encode('utf8'))
 
 if __name__ == "__main__":
     main()
