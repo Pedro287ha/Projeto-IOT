@@ -14,9 +14,8 @@ Este é um projeto simples que monitora chamados sem interação por mais de 3 d
 ![](https://i.imgur.com/sZHzDGn.gif)
 
 
-![](https://img.shields.io/github/stars/Pedro287ha/Projeto-IOT)
-![](https://img.shields.io/github/forks/Pedro287ha/Projeto-IOT)
-
-
 ## Funcionamento
 ![](https://i.imgur.com/CQLro5h.gif)
+
+![](https://img.shields.io/github/stars/Pedro287ha/Projeto-IOT)
+![](https://img.shields.io/github/forks/Pedro287ha/Projeto-IOT)
