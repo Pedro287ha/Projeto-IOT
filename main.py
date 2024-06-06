@@ -133,10 +133,9 @@ def receber_chamados(api_token,tipo_token) -> list:
 
             # Chamado esta sem movimento a mais de 3 dias ?
             if total_dias_entre_datas >= DIAS_NOTIFICAR:
-
                 lista_chamados.append({
                     "id" : ticket["TicketId"],
-                    "corpo_email" : f'<p></p><p><b>ATENÇÃO</b> CHAMADO COM ID <b style="color:purple;">{ticket["TicketId"]}</b> está há <b style="color:red;">{total_dias_entre_datas} dias aberto</b> Link: <a href=https://liveops-americas.seidor.com/#/ticket/{ticket["TicketId"]}>Link Ticket</a></p><img src="https://www.python.org/static/community_logos/python-powered-w-70x28.png"> - Projeto IOT - Email Automático<img><hr>'
+                    "corpo_email" : f'<p></p><p><b>ATENÇÃO</b> CHAMADO COM ID <b style="color:purple;">{ticket["TicketId"]}</b> está há <b style="color:red;">{total_dias_entre_datas} dias sem interação</b> Link: <a href=https://liveops-americas.seidor.com/#/ticket/{ticket["TicketId"]}>Link Ticket</a></p><img src="https://www.python.org/static/community_logos/python-powered-w-70x28.png"> - Projeto IOT - Email Automático<img><hr>'
                 })
     return lista_chamados
 
@@ -199,5 +198,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     main()
-
-
