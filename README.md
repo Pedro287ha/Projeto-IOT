@@ -10,7 +10,7 @@ Este é um projeto simples que monitora chamados sem interação por mais de 3 d
 ## Como Usar
 
 2. **Configuração das Credenciais:**
-   - No arquivo `main.py`, insira suas credenciais do sistema, email para permitir com que o programa posso ser utilizado
+   - No arquivo `main.py`, insira suas credenciais do sistema, email para permitir com que o programa possa ser utilizado
 ![](https://i.imgur.com/sZHzDGn.gif)
 
 
