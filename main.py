@@ -24,6 +24,7 @@ EMAIL_DESTINATARIO = ""
 
 ###------------------###
 #  CONFIGURACOES DO SERVIDOR SMTP
+
 PORTA = 587  #STARTTLS outlook # 
 SERVIDOR_SMTP = "smtp-mail.outlook.com"
 
@@ -33,6 +34,8 @@ DIAS_NOTIFICAR = 3
 ID_USUARIO = 116
 HORARIO_LEMBRETE_HORAS = 18
 email_aviso_enviado = False
+mensagem_fechamento_horas = f'<p></p><p><b>ATENÇÃO</b><b style="color:orange;"> Lembre-se de fechar suas horas</b><p>Horario atual: <b style="color:red;">{datetime.now().hour}</b> PM</p></p><img src="https://www.python.org/static/community_logos/python-powered-w-70x28.png"> - Projeto IOT - Email Automático<img><hr>'
+
 ###------------------###
 ## Definindo User-agent para evitar block do CLoudFlare
 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36'}
@@ -55,7 +58,9 @@ def gerar_api_token(email,senha) -> dict:
     # Tratando possiveis erros de conexao
     try:
         dados_request = requests.post(url_api_auth,headers=headers, allow_redirects=True,data=data)
-    
+        # Transformando JSON recebido em um dict
+        dados_dict = dict(json.loads(dados_request.text))
+
     except requests.ConnectionError:
         print("Ocorreu um erro de CONEXAO.. Verfique sua CONEXAO com o server!")
         return {}
@@ -63,9 +68,6 @@ def gerar_api_token(email,senha) -> dict:
         print(f"ERRO desconhecido: {err}")
         return {}
         
-    # Transformando JSON recebido em um dict 
-    dados_dict = dict(json.loads(dados_request.text))
-
 
     # API respondeu com algum erro ?
     if dados_dict.get("error") is not None:
@@ -102,16 +104,18 @@ def receber_chamados(api_token,tipo_token) -> list:
 
     ## Convertendo data_dicionario para json
     data = json.dumps(data_em_dict)
-
-    dados_request = requests.post(url_api_chamados,headers=headers, allow_redirects=True,data=data)
-    
-    # Transformando JSON recebido em um dict 
-    dados_dict = dict(json.loads(dados_request.text))
-    
+    try:
+        dados_request = requests.post(url_api_chamados,headers=headers, allow_redirects=True,data=data)
+        # Transformando JSON recebido em um dict 
+        dados_dict = dict(json.loads(dados_request.text))
+    except requests.ConnectionError as err:
+        print("Erro ao conectar com servidor!")
+        return list() # retornando uma lista vazia como falsy
+    except Exception as err:
+        print("Erro Desconhecido!: ", err)
+        return list()
     # Apenas filtrando por tipos de status abaixo
     status_importantes = ["Encaminhado para atendente", "Em atendimento"]
-    
-    #d = datetime.today() - timedelta(days=QUANTIDADE_DIAS_CHECAR)
     
     
     for ticket in dados_dict["TicketGrid"]:
@@ -137,16 +141,17 @@ def receber_chamados(api_token,tipo_token) -> list:
     return lista_chamados
 
 
-def enviar_email(email_remetente,senha,email_destinatario,corpo_email):
+def enviar_email(email_remetente,senha,email_destinatario,corpo_email) -> None:
 
     # Criando email de envio
     msg = email.message.Message()
-    msg['Subject'] = "CHAMADO ABERTO" #ASSUNTO DO E-MAIL#
-    msg['From'] = email_remetente #E-MAIL QUE VAI ENVIAR O E-MAIL#
+    msg['Subject'] = "SISTEMA DE AVISO" #ASSUNTO DO E-MAIL
+    msg['From'] = email_remetente #E-MAIL QUE VAI ENVIAR O E-MAIL
     msg['To'] = email_destinatario#E-MAIL QUE VAI RECEBER
     msg.add_header('Content-Type', 'text/html')
     msg.set_payload(corpo_email)
 
+    ## Tratar erros aqui
     context = ssl.create_default_context() # criando um handshake com o servidor 
 
     with smtplib.SMTP(SERVIDOR_SMTP, PORTA) as server:
@@ -157,27 +162,36 @@ def enviar_email(email_remetente,senha,email_destinatario,corpo_email):
 def main() -> int:
 
     ## Usuario informou login e senha de chamados ?
-    
     if EMAIL_LOGIN_CHAMADOS and SENHA_LOGIN_CHAMADOS:
 
         token = gerar_api_token(EMAIL_LOGIN_CHAMADOS,SENHA_LOGIN_CHAMADOS)
         
-        # Executa apenas se token for existente
+
         if token:
             #Receber todos os chamados abertos e fazer verificacao 
             chamados = receber_chamados(token['access_token'],token['token_type'])
-            print(len(chamados), chamados)
+            if chamados:
+                print(f"{len(chamados)} encontrado! as {datetime.now()}")
 
-            for chamado in chamados:
-                enviar = enviar_email(EMAIL_REMETENTE,SENHA_EMAIL_REMETENTE, EMAIL_DESTINATARIO, chamado["corpo_email"])
-                    
+                for chamado in chamados:
+                    enviar_email(EMAIL_REMETENTE,SENHA_EMAIL_REMETENTE, EMAIL_DESTINATARIO, chamado["corpo_email"])
+                    print(f"Email enviado com sucesso! as {datetime.now()}")
+                        
+        # loop principal do programa
+            while True:
+                horario_atual = datetime.now().hour
 
-        
-        ## Loop quando programa estiver rodando
+                # Lembrete de horas sera enviado caso
+                if horario_atual >= HORARIO_LEMBRETE_HORAS and horario_atual <= 23:
 
-        horario_atual = datetime.now().hour
-        if horario_atual >= HORARIO_LEMBRETE_HORAS and horario_atual <= 23:
-            print("Lembrar de fechar horas!!")
+                    ## Enviando email de aviso de horas
+                    enviar_email(EMAIL_REMETENTE,SENHA_EMAIL_REMETENTE, EMAIL_DESTINATARIO,mensagem_fechamento_horas)
+
+
+                
+                # Programa ira checar horario a cada 10 minutos
+                sleep(600)
+
 
     else:
         print("Login ou senha NÃO informado!!")
